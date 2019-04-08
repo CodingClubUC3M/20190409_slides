@@ -1,6 +1,6 @@
 ---
 title: "Starting with Flexdashboard"
-author: "Miguel ¡ngel Daza"
+author: "Miguel √Ångel Daza"
 date: "April 9, 2019"
 output: slidy_presentation
 ---
