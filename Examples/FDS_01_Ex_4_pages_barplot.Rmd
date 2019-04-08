@@ -1,0 +1,322 @@
+---
+title: "Analyzing log file"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: 
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+library(alluvial)
+library(magrittr) # for %>%
+library(dplyr) # for using group_by
+library(stringr) # for use str_sub
+```
+
+```{r echo=FALSE}
+## FUNCTIONS *********************
+## *******************************
+Calculate.Hours<-function(x){
+  # Calculate records by hour
+  tHours<-table(x)
+  nHours<-c("00","01","02","03","04","05","06","07","08","09","10","11","12","13","14","15","16","17","18","19","20","21","22","23")
+  Hours<-c(rep(0,24))
+  names(Hours)<-nHours
+  for (i in c(1:dim(tHours))){
+    Hours[as.numeric(names(tHours[i]))+1]<-tHours[i]
+  }
+  return(Hours)
+}
+
+# Clock plot function
+clock.plot <- function (x, col = rainbow(n), ...) {
+  # addapting from https://www.r-graph-gallery.com/49-clock-plot/
+  if( min(x)<0 ) x <- x - min(x)
+  if( max(x)>1 ) x <- x/max(x)
+  n <- length(x)
+  if(is.null(names(x))) names(x) <- 0:(n-1)
+  m <- 1.05
+  plot(0, type = 'n', xlim = c(-m,m), ylim = c(-m,m), axes = F, xlab = '', ylab = '', ...)
+  a <- pi/2 - 2*pi/200*0:200
+  polygon( cos(a), sin(a) )
+  v <- .02
+  a <- pi/2 - 2*pi/n*0:n
+  segments( (1+v)*cos(a), (1+v)*sin(a), (1-v)*cos(a), (1-v)*sin(a) )
+  segments( cos(a), sin(a),0, 0, col = 'light grey', lty = 3) 
+  ca <- -2*pi/n*(0:50)/50
+  for (i in 1:n) {
+    a <- pi/2 - 2*pi/n*(i-1)
+    b <- pi/2 - 2*pi/n*i
+    polygon( c(0, x[i]*cos(a+ca), 0), c(0, x[i]*sin(a+ca), 0), col=col[i] )
+    v <- .1
+    text((1+v)*cos(a), (1+v)*sin(a), names(x)[i])
+  }
+}
+
+
+```
+
+```{r}
+# Read data
+
+## ************************
+# Read log file
+DirFiles<-list.files(getwd(),"csv")
+# Read users file
+# Users<-read.csv2("Users.csv", header = T, encoding="UTF-8", stringsAsFactors = F)
+
+LogFile<-read.csv(DirFiles[1], header = T, encoding="UTF-8", stringsAsFactors = F)
+names(LogFile)<-c("DataTime","Nom", "User", "Context","Component", "Event","Description","Origin","Dir.IP")
+LogFile$Data<-as.Date(substr(LogFile$DataTime,1,10), "%d/%m/%Y")
+
+# clean adms, and teachers
+LogFile<-LogFile[LogFile$Nom!="traspaso",]
+LogFile<-LogFile[LogFile$Nom!="-",]
+LogFile<-LogFile[LogFile$Nom!="Admin Aula Global",]
+LogFile$record<-1
+
+# course start at 2019-01-28
+LogFile<-LogFile[LogFile$Data>as.Date("28/01/2019","%d/%m/%Y"),]
+LogFile$Hour<-substr(str_sub(LogFile$DataTime, start= -5),1,2)
+
+# put day o the week
+LogFile$WeekDay<-weekdays(LogFile$Data)
+LogFile$WeekDay<-factor(LogFile$WeekDay, levels=c("lunes" ,"martes", "miércoles" ,"jueves","viernes" ,"sábado" ,"domingo" ), labels = c("Mo","Tu","We","Th","Fr","Sa","Su"))
+
+# calculate net
+UC3m<-substr(LogFile$Dir.IP,1,8)
+IP_UC3m<-UC3m=="163.117."
+LogFile$Net<-factor(IP_UC3m, levels=c(T,F), labels=c("Net_UC3m","Others"))
+
+LogFile<-LogFile[, c(10,2,4,5,6,9,12,13,14,11)]
+
+NomAlum<-unique(LogFile$Nom)
+NumAlum<-length(unique(LogFile$Nom))
+alum<-paste0("Alum_",c(1:NumAlum))
+LogFile$Nom<-factor(LogFile$Nom,levels=NomAlum, labels=alum)
+
+```
+
+
+Initial
+==============================
+
+Column {data-width=350}
+----------------------------------------------------------------------
+
+### net by WeekDay (clicks)
+
+```{r}
+# net by WeekDay
+ggplot(LogFile, aes(fill=Net,y=record, x=WeekDay)) + 
+  geom_bar( stat="identity")
+```
+
+### students by Weekday
+
+```{r}
+ta<-table(LogFile$WeekDay,LogFile$Nom)
+ta[ta>0]<-1
+#rowSums(as.matrix(ta))
+barplot(rowSums(as.matrix(ta)), main="different students by Weekday")
+```
+
+
+
+Column {data-width=650}
+-------------------------
+
+### net by hour (clicks)
+
+```{r fig.width=11}
+# net by hour
+ggplot(LogFile, aes(fill=Net, y=record, x=Hour)) + 
+  geom_bar( stat="identity")
+```
+
+
+### students by hour
+
+```{r fig.width=11}
+tb<-table(LogFile$Hour,LogFile$Nom)
+tb[tb>0]<-1
+#rowSums(as.matrix(tb))
+barplot(rowSums(as.matrix(tb)), main="different students by hour")
+```
+
+
+Clock
+==============================
+
+Column {data-width=600}
+----------------------------------------------------------------------
+
+### Clock
+
+```{r}
+clock.plot(Calculate.Hours(LogFile$Hour), main = "Clicks Students by  Hours")
+```
+
+
+
+Column {data-width=400}
+-------------------------
+
+### net by hour (clicks)
+
+```{r fig.width=11}
+# net by hour
+ggplot(LogFile, aes(fill=Net, y=record, x=Hour)) + 
+  geom_bar( stat="identity")
+```
+
+### net by WeekDay (clicks)
+
+```{r}
+# net by WeekDay
+ggplot(LogFile, aes(fill=Net,y=record, x=WeekDay)) + 
+  geom_bar( stat="identity")
+```
+
+
+WeekDays (clicks)
+==============================
+
+Column
+-------------------------------------------------------------
+
+### Mondays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="Mo"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+
+### Thursdays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="Th"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+Column
+------------------------
+
+### Tuesdays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="Tu"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+### Fridays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="Fr"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+
+Column
+------------------------
+
+### Wednesdays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="We"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+
+
+### Saturdays & Sundays
+
+```{r}
+filtro<-LogFile$Hour[LogFile$WeekDay=="Sa"|LogFile$WeekDay=="Su"]
+
+# Use the function on the created data
+clock.plot(Calculate.Hours(filtro), main = "Clicks Students by  Hours")
+```
+
+
+Weekdays (Nets)
+===================
+
+#### Blue color for UC3m net  ..........   Red color for Others nets
+
+Column
+----------------------------------------
+
+### Mondays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="Mo",]
+
+# Use the function on the created data
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
+
+
+### Thursdays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="Th",]
+
+# Use the function on the created data
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
+
+Column
+------------------------
+
+### Tuesdays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="Tu",]
+
+# Use the function on the created data
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
+
+### Fridays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="Fr",]
+
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
+
+
+Column
+------------------------
+
+### Wednesdays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="We",]
+
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
+
+
+
+### Saturdays & Sundays
+
+```{r}
+filtro<-LogFile[LogFile$WeekDay=="Sa"|LogFile$WeekDay=="Su",]
+
+barplot(t(table(filtro$Hour, filtro$Net)),col=c("Blue","Red"))
+```
